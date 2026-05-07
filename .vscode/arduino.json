@@ -1,0 +1,22 @@
+{
+  "port": "COM3",
+  "configuration": "flash=8388608_0,freq=200,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,boot2=boot2_w25q080_2_padded_checksum,usbstack=picosdk,ipbtstack=ipv4only,uploadmethod=default",
+  "output": "build",
+  "board": "rp2040:rp2040:adafruit_kb2040",
+  "programmer": "",
+  "useProgrammer": false,
+  "optimize_for_debug": false,
+  "configurationRequired": true,
+  "compile_profile": "",
+  "monitorPortSettings": {
+    "settings": {
+      "port": "COM3",
+      "baudRate": 115200,
+      "lineEnding": "\r\n",
+      "dataBits": 8,
+      "parity": "none",
+      "stopBits": "one"
+    },
+    "profile_name": ""
+  }
+}
