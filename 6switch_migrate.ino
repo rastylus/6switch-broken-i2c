@@ -344,11 +344,17 @@ void setup() {
   pinMode(ENC_SW,  INPUT_PULLUP);
   lastClk = digitalRead(ENC_CLK);
   attachInterrupt(digitalPinToInterrupt(ENC_CLK), encoderISR, CHANGE);
+  
+  pinMode(PIXEL_PIN, OUTPUT);
+  digitalWrite(PIXEL_PIN, LOW);
+  delay(10);
 
   pixels.begin();
   applyPixelBrightness();
   pixels.clear();
   pixels.show();
+  delay(20);
+  updateStatusPixels();
   updateStatusPixels();
 
   MidiUSB.begin();
@@ -475,6 +481,21 @@ void loop() {
       }
     }
   }
+      // Periodically refresh NeoPixels in case their power switch was turned off/on
+  static unsigned long lastPixelRefresh = 0;
+
+  if (millis() - lastPixelRefresh > 250) {
+    lastPixelRefresh = millis();
+
+    for (int i = 0; i < numSwitches; i++) {
+      SwitchConfig &sw = activeSwitch(i);
+
+      if (toggleState[i]) {
+        setPixel(i, typeOnColor(sw.midiType));
+      } else {
+        setPixel(i, sw.offColor);
+      }
+    }
 
   serviceDisplayRefresh();
 }
