@@ -39,11 +39,20 @@ const int numSwitches = 6;
 #define TOTAL_PIXELS 8
 #define PIXEL_BRIGHTNESS_LEVEL 5
 
+const uint8_t switchPixelIndex[NUM_SWITCH_PIXELS] = {
+  0,  // SW1
+  1,  // SW2
+  2,  // SW3
+  5,  // SW4
+  6,  // SW5
+  7   // SW6
+};
+
 // ---------- Status NeoPixel indexes on same chain ----------
 // If status LEDs are physically first in chain, set these to 0 and 1.
 // If status LEDs are last in chain (after 8 switch LEDs), leave as 8 and 9.
-#define STATUS_POWER_INDEX 8
-#define STATUS_BANK_INDEX 9
+#define STATUS_POWER_INDEX 3
+#define STATUS_BANK_INDEX 4
 
 // ============================================================
 // TYPES / MODES
@@ -787,7 +796,8 @@ void handleRelease(int index) {
 
 void setPixel(int index, const RgbColor &color) {
   if (index < NUM_SWITCH_PIXELS) {
-    pixels.setPixelColor(index, pixels.Color(color.r, color.g, color.b));
+    uint8_t physicalPixel = switchPixelIndex[index];
+    pixels.setPixelColor(physicalPixel, pixels.Color(color.r, color.g, color.b));
     pixels.show();
   }
 }
