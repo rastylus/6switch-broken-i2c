@@ -121,8 +121,8 @@ struct SwitchConfig {
 // ============================================================
 
 SwitchConfig defaultSwitches[numSwitches] = {
-  {SW_1, MIDI_CC,   BEHAVIOR_MOMENTARY, 20, 1, 127, 0, {0, 50, 0}, {0, 0, 0}},
-  {SW_2, MIDI_CC,   BEHAVIOR_TOGGLE,    21, 1, 127, 0, {50, 0, 0}, {0, 0, 0}},
+  {SW_1, MIDI_NOTE, BEHAVIOR_MOMENTARY, 60, 1, 127, 0, {0, 50, 0}, {0, 0, 0}},
+  {SW_2, MIDI_NOTE, BEHAVIOR_MOMENTARY, 61, 1, 127, 0, {0, 50, 0}, {0, 0, 0}},
   {SW_3, MIDI_NOTE, BEHAVIOR_MOMENTARY, 62, 1, 127, 0, {0, 50, 0}, {0, 0, 0}},
   {SW_4, MIDI_NOTE, BEHAVIOR_MOMENTARY, 63, 1, 127, 0, {0, 50, 0}, {0, 0, 0}},
   {SW_5, MIDI_NOTE, BEHAVIOR_MOMENTARY, 64, 1, 127, 0, {0, 50, 0}, {0, 0, 0}},
@@ -166,7 +166,7 @@ struct PersistDataV3 {
 // GLOBALS
 // ============================================================
 
-Adafruit_NeoPixel pixels(TOTAL_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels(TOTAL_PIXELS, PIXEL_PIN, NEO_RGB + NEO_KHZ800);
 
 bool lastPhysicalState[numSwitches];
 bool currentPhysicalState[numSwitches];
@@ -222,7 +222,7 @@ const uint8_t FW_VERSION_PATCH = 0;
 
 // Editor state
 EditState editState = EDIT_NAVIGATE;
-ScreenMode currentScreen = SCREEN_EDIT_PRIMARY;
+ScreenMode currentScreen = SCREEN_PERFORMANCE;
 int selectedField = FIELD_SCREEN;
 int globalMidiChannel = 1;
 int selectedSwitch = 0;
@@ -353,7 +353,7 @@ void setup() {
   pinMode(ENC_SW,  INPUT_PULLUP);
   lastClk = digitalRead(ENC_CLK);
   attachInterrupt(digitalPinToInterrupt(ENC_CLK), encoderISR, CHANGE);
-  
+
   pinMode(PIXEL_PIN, OUTPUT);
   digitalWrite(PIXEL_PIN, LOW);
   delay(10);
@@ -490,7 +490,7 @@ void loop() {
       }
     }
   }
-      // Periodically refresh NeoPixels in case their power switch was turned off/on
+  // Periodically refresh NeoPixels in case their power switch was turned off/on
   static unsigned long lastPixelRefresh = 0;
 
   if (millis() - lastPixelRefresh > 250) {
@@ -499,13 +499,23 @@ void loop() {
     for (int i = 0; i < numSwitches; i++) {
       SwitchConfig &sw = activeSwitch(i);
 
-      if (toggleState[i]) {
+      bool ledOn = false;
+
+      if (sw.behavior == BEHAVIOR_TOGGLE) {
+        ledOn = toggleState[i];
+      } else if (sw.behavior == BEHAVIOR_MOMENTARY) {
+        ledOn = switchPressed[i];
+      }
+
+      if (ledOn) {
         setPixel(i, typeOnColor(sw.midiType));
       } else {
         setPixel(i, sw.offColor);
       }
     }
 
+    updateStatusPixels();
+  }
   serviceDisplayRefresh();
 }
 
@@ -967,31 +977,31 @@ RgbColor typeOnColor(MidiActionType type) {
     case MIDI_NOTE:      return {0, 50, 0};   // Green
     case MIDI_CC:        return {0, 0, 50};   // Blue
     case MIDI_PC:        return {50, 25, 0};  // Amber
-    case MIDI_TRANSPORT: return {50, 0, 50};  // Magenta
+    case MIDI_TRANSPORT: return {50, 0, 0};  //  Red
     default:             return {40, 40, 40}; // White-ish fallback
   }
 }
 
 const char* screenModeName(ScreenMode mode) {
   switch (mode) {
+    case SCREEN_PERFORMANCE:    return "PF";
     case SCREEN_EDIT_PRIMARY:   return "E1";
     case SCREEN_EDIT_SECONDARY: return "E2";
-    case SCREEN_PERFORMANCE:    return "PF";
     default:                    return "?";
   }
 }
 
 const EditField* currentNavigationOrder(int &count) {
   switch (currentScreen) {
+    case SCREEN_PERFORMANCE:
+      count = performanceNavigationFieldCount;
+      return performanceNavigationOrder;
     case SCREEN_EDIT_PRIMARY:
       count = primaryNavigationFieldCount;
       return primaryNavigationOrder;
     case SCREEN_EDIT_SECONDARY:
       count = secondaryNavigationFieldCount;
       return secondaryNavigationOrder;
-    case SCREEN_PERFORMANCE:
-      count = performanceNavigationFieldCount;
-      return performanceNavigationOrder;
     default:
       count = primaryNavigationFieldCount;
       return primaryNavigationOrder;
@@ -1046,25 +1056,18 @@ void buildCascadeBankPresets() {
     }
   }
 
-  // Bank 1: Ableton control bank (arming/record style controls), all toggle CC.
-  // CC layout 20..27 keeps setup simple for MIDI mapping in Live.
-  const int controlBank = 0;
-  for (int i = 0; i < numSwitches; i++) {
-    bankSwitches[controlBank][i].midiType = MIDI_CC;
-    bankSwitches[controlBank][i].behavior = BEHAVIOR_TOGGLE;
-    bankSwitches[controlBank][i].number = (uint8_t)(20 + i);
-    bankSwitches[controlBank][i].onValue = 127;
-    bankSwitches[controlBank][i].offValue = 0;
-  }
+  // Banks 1-6: clip-launch banks, all momentary notes.
+  // Bank 1 starts at note 60, Bank 2 at 66, Bank 3 at 72, etc.
+  for (int bank = 0; bank < 6; bank++) {
+    int offset = bank * numSwitches;
 
-  // Banks 2-7: clip-launch banks, all momentary notes with +8 offset per bank.
-  for (int bank = 1; bank < NUM_BANKS - 1; bank++) {
-    int offset = (bank - 1) * numSwitches;
     for (int i = 0; i < numSwitches; i++) {
-      int shifted = 60 + i + offset; // Bank 2 starts at C4..G4
+      int shifted = 60 + i + offset;
+
       while (shifted > 127) {
         shifted -= 128;
       }
+
       bankSwitches[bank][i].midiType = MIDI_NOTE;
       bankSwitches[bank][i].behavior = BEHAVIOR_MOMENTARY;
       bankSwitches[bank][i].number = (uint8_t)shifted;
@@ -1073,9 +1076,22 @@ void buildCascadeBankPresets() {
     }
   }
 
-  // Bank 8: transport bank (PLAY, STOP, CONT, PANIC, PANIC, CONT, STOP, PLAY).
-  int transportBank = NUM_BANKS - 1;
+  // Bank 7: Ableton control bank.
+  const int controlBank = 6;  // Bank 7, because arrays start at 0
+
+  for (int i = 0; i < numSwitches; i++) {
+    bankSwitches[controlBank][i].midiType = MIDI_CC;
+    bankSwitches[controlBank][i].behavior = BEHAVIOR_MOMENTARY; // or BEHAVIOR_TOGGLE
+    bankSwitches[controlBank][i].number = (uint8_t)(20 + i);
+    bankSwitches[controlBank][i].onValue = 127;
+    bankSwitches[controlBank][i].offValue = 0;
+  }
+
+  // Bank 8: transport bank.
+  int transportBank = NUM_BANKS - 1; // Bank 8 / index 7
+
   const uint8_t transportLayout[numSwitches] = {0, 1, 2, 3, 1, 0};
+
   for (int i = 0; i < numSwitches; i++) {
     bankSwitches[transportBank][i].midiType = MIDI_TRANSPORT;
     bankSwitches[transportBank][i].behavior = BEHAVIOR_MOMENTARY;
@@ -1088,7 +1104,7 @@ void applyCascadeFactoryReset() {
   globalMidiChannel = 1;
   currentBank = 1;
   selectedSwitch = 0;
-  currentScreen = SCREEN_EDIT_PRIMARY;
+  currentScreen = SCREEN_PERFORMANCE;
   selectedField = FIELD_SCREEN;
   editState = EDIT_NAVIGATE;
   lastPressedSwitch = -1;
@@ -1630,11 +1646,11 @@ void updateStatusPixels() {
   static const RgbColor bankColors[NUM_BANKS] = {
     {0, 50, 0},   // 1: Green
     {50, 50, 0},  // 2: Yellow
-    {0, 0, 50},   // 3: Blue
-    {50, 0, 50},  // 4: Magenta
-    {0, 50, 50},  // 5: Cyan
-    {50, 20, 0},  // 6: Orange
-    {40, 40, 40}, // 7: White
+    {50, 0, 50},  // 3: Magenta
+    {0, 50, 50},  // 4: Cyan
+    {50, 20, 0},  // 5: Orange
+    {40, 40, 40}, // 6: White
+    {0, 0, 50},   // 7: Blue
     {50, 0, 0}    // 8: Red
   };
 
